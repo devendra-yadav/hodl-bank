@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title This contract is a HODL bank where users can HODL their tokens and cant withdraw before the HODL time is over
@@ -53,7 +53,7 @@ contract HodlBank {
       
         userHoldTokenMap[requester].push(HodlData(hodlId, tokenAddress, block.timestamp, amount, hodlEndTime));
 
-        ()=contractAddress.call{value : amount}("");
+        (bool res, )=contractAddress.call{value : amount}("");
         
         emit HodlCreated(requester, hodlId, block.timestamp, hodlEndTime, tokenAddress, amount );
 
@@ -75,28 +75,30 @@ contract HodlBank {
      * @dev get balance of the contract
      * @return balance contract balance
      */
-    function getContractNativeBalance() public returns(uint memory balance){
-        contractAddress.balance;
+    function getContractNativeBalance() public view returns(uint balance){
+        return contractAddress.balance;
     }
 
 
-    function getContractERC20TokenBalance(address tokenAddress) public returns(uint memory balance){
-        ((IERC20)tokenAddress).balanceOf(contractAddress);
+    function getContractERC20TokenBalance(address tokenAddress) public view returns(uint balance){
+        
+        return ((IERC20)(tokenAddress)).balanceOf(contractAddress);
+
     }
 
-    function withdraw(address requester, uint hodlId) public{
+    function withdraw(address requester, uint hodlIdToWithdraw) public{
 
-        require(hodlId>0, "Invalid Hodl");
+        require(hodlIdToWithdraw>0, "Invalid Hodl");
 
-        HodlData[] allHodlsForUser = getHodlsForUser(requester);
+        HodlData[] memory allHodlsForUser = getHodlsForUser(requester);
 
         require(allHodlsForUser.length >0 , "No HODL found");
 
-        for(int i=0;i<allHodlsForUser.length;i++){
-            if(allHodlsForUser[i].id == hodlId){
+        for(uint i=0;i<allHodlsForUser.length;i++){
+            if(allHodlsForUser[i].id == hodlIdToWithdraw){
                 require(allHodlsForUser[i].endTime < block.timestamp, "Cant withdraw. HODL time not over yet.");
-                ((IERC20)allHodlsForUser[i].tokenContractAddress).transferTo(requester, contractAddress, allHodlsForUser[i].amount);
-                emit Withdraw(requester, hodlId, block.timestamp, allHodlsForUser[i].tokenContractAddress, amount);
+                ((IERC20)(allHodlsForUser[i].tokenContractAddress)).transferFrom(contractAddress, requester, allHodlsForUser[i].amount);
+                emit Withdraw(requester, hodlIdToWithdraw, block.timestamp, allHodlsForUser[i].tokenContractAddress, allHodlsForUser[i].amount);
                 break;
             }
         }
