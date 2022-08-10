@@ -39,23 +39,46 @@ contract HodlBank {
     /**
      * @dev : This function is to initial the hodl request by a user for a specific token for a given amount.
      *        it also emit the corresponding event for logging purpose.
-     * @param requester  Requester address who want to HODL
      * @param tokenAddress  contract address of the token that the user want to hODL
      * @param amount  amount of tokens to HODL
      * @param hodlEndTime  end time of the HODL. Amount can be withdrawn on after this time.
      * @return result  it returns if the HODL request was successful or it failed.
      */
-    function hodlRequest(address requester, address tokenAddress, uint amount, uint hodlEndTime) public payable returns (bool result) {
+    function hodlRequestERC20Token(address tokenAddress, uint amount, uint hodlEndTime) public payable returns (bool result) {
 
         require(hodlEndTime>block.timestamp,"HODL end time should be in future");
 
         require(amount>0,"Amount should be greater than 0");
       
-        userHoldTokenMap[requester].push(HodlData(hodlId, tokenAddress, block.timestamp, amount, hodlEndTime));
+        userHoldTokenMap[msg.sender].push(HodlData(hodlId, tokenAddress, block.timestamp, amount, hodlEndTime));
 
-        (bool res, )=contractAddress.call{value : amount}("");
+        ((IERC20)(tokenAddress)).transferFrom(msg.sender, contractAddress, amount);
         
-        emit HodlCreated(requester, hodlId, block.timestamp, hodlEndTime, tokenAddress, amount );
+        emit HodlCreated(msg.sender, hodlId, block.timestamp, hodlEndTime, tokenAddress, amount );
+
+        hodlId++;
+
+        return true;
+    }
+
+    /**
+     * @dev : This function is to initial the hodl request by a user for a specific token for a given amount.
+     *        it also emit the corresponding event for logging purpose.
+     * @param amount  amount of tokens to HODL
+     * @param hodlEndTime  end time of the HODL. Amount can be withdrawn on after this time.
+     * @return result  it returns if the HODL request was successful or it failed.
+     */
+    function hodlRequestNativeToken(uint amount, uint hodlEndTime) public payable returns (bool result) {
+
+        require(hodlEndTime>block.timestamp,"HODL end time should be in future");
+
+        require(amount>0,"Amount should be greater than 0");
+      
+        userHoldTokenMap[msg.sender].push(HodlData(hodlId, address(0), block.timestamp, amount, hodlEndTime));
+
+        contractAddress.transfer(amount);
+        
+        emit HodlCreated(msg.sender, hodlId, block.timestamp, hodlEndTime, address(0), amount );
 
         hodlId++;
 
@@ -79,26 +102,39 @@ contract HodlBank {
         return contractAddress.balance;
     }
 
-
+    /**
+     * @dev THis function is to the the balance of a specific token in the contract
+     * @param tokenAddress contract address of the token
+     * @return balance token balance
+     */
     function getContractERC20TokenBalance(address tokenAddress) public view returns(uint balance){
         
         return ((IERC20)(tokenAddress)).balanceOf(contractAddress);
 
     }
 
-    function withdraw(address requester, uint hodlIdToWithdraw) public{
+    /**
+     * @dev this function is to withdraw a given HODL once the HODL time is over
+     * @param hodlIdToWithdraw HODL id that needs to be withdrawn
+     */
+    function withdraw(uint hodlIdToWithdraw) public payable{
 
         require(hodlIdToWithdraw>0, "Invalid Hodl");
 
-        HodlData[] memory allHodlsForUser = getHodlsForUser(requester);
+        HodlData[] memory allHodlsForUser = getHodlsForUser(msg.sender);
 
         require(allHodlsForUser.length >0 , "No HODL found");
 
         for(uint i=0;i<allHodlsForUser.length;i++){
             if(allHodlsForUser[i].id == hodlIdToWithdraw){
                 require(allHodlsForUser[i].endTime < block.timestamp, "Cant withdraw. HODL time not over yet.");
-                ((IERC20)(allHodlsForUser[i].tokenContractAddress)).transferFrom(contractAddress, requester, allHodlsForUser[i].amount);
-                emit Withdraw(requester, hodlIdToWithdraw, block.timestamp, allHodlsForUser[i].tokenContractAddress, allHodlsForUser[i].amount);
+                if(allHodlsForUser[i].tokenContractAddress == address(0)){
+                    payable(msg.sender).transfer(allHodlsForUser[i].amount);
+                }else{
+                    ((IERC20)(allHodlsForUser[i].tokenContractAddress)).transferFrom(contractAddress, msg.sender, allHodlsForUser[i].amount);
+                }
+                
+                emit Withdraw(msg.sender, hodlIdToWithdraw, block.timestamp, allHodlsForUser[i].tokenContractAddress, allHodlsForUser[i].amount);
                 break;
             }
         }
